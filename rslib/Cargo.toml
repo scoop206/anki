@@ -34,7 +34,6 @@ syn.workspace = true
 [dev-dependencies]
 async-stream.workspace = true
 reqwest = { workspace = true, features = ["native-tls"] }
-tempfile.workspace = true
 wiremock.workspace = true
 
 [dependencies]
