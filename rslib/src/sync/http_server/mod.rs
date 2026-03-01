@@ -255,12 +255,14 @@ impl SimpleServer {
             .to_string();
         let folder = base_folder.join(name);
         create_dir_all(&folder).whatever_context("creating user folder")?;
+        let mut state = self.state.lock().unwrap();
+        // Remove any existing entry first — this drops the old ServerMediaManager
+        // and closes its SQLite connection before we open a new one for the same
+        // folder. The hkey also changes on password change, so a plain insert
+        // would leave a stale entry.
+        state.users.retain(|_, u| u.name != name);
         let media =
             ServerMediaManager::new(&folder).whatever_context("opening media db")?;
-        let mut state = self.state.lock().unwrap();
-        // Remove any existing entry for this username — the hkey changes when
-        // the password changes, so a plain insert would leave a stale entry.
-        state.users.retain(|_, u| u.name != name);
         state.users.insert(
             hkey,
             User {
