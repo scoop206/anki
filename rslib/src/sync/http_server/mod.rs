@@ -7,6 +7,11 @@ mod media_manager;
 mod routes;
 mod user;
 
+// Expose sync routers so external crates can embed them directly into their
+// own Axum app without a separate process or HTTP proxy.
+pub use routes::collection_sync_router;
+pub use routes::media_sync_router;
+
 use std::collections::HashMap;
 use std::future::Future;
 use std::future::IntoFuture;
@@ -41,9 +46,7 @@ use crate::sync::error::HttpResult;
 use crate::sync::error::OrHttpErr;
 use crate::sync::http_server::logging::with_logging_layer;
 use crate::sync::http_server::media_manager::ServerMediaManager;
-use crate::sync::http_server::routes::collection_sync_router;
 use crate::sync::http_server::routes::health_check_handler;
-use crate::sync::http_server::routes::media_sync_router;
 use crate::sync::http_server::user::User;
 use crate::sync::login::HostKeyRequest;
 use crate::sync::login::HostKeyResponse;
