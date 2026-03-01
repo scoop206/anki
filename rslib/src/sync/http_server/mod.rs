@@ -235,6 +235,46 @@ impl SimpleServer {
         })
     }
 
+    /// Add a user at runtime without restarting. Safe to call concurrently —
+    /// takes the state mutex only long enough to insert. If a user with the
+    /// same name already exists, their entry is removed first (handles password
+    /// changes where the hkey would otherwise differ).
+    pub fn add_user(
+        &self,
+        name: &str,
+        password: &str,
+        base_folder: &Path,
+    ) -> error::Result<(), Whatever> {
+        let hkey = derive_hkey(&format!("{name}:{password}"));
+        let pwhash = Pbkdf2
+            .hash_password(
+                password.as_bytes(),
+                &SaltString::from_b64("tonuvYGpksNFQBlEmm3lxg").unwrap(),
+            )
+            .expect("couldn't hash password")
+            .to_string();
+        let folder = base_folder.join(name);
+        create_dir_all(&folder).whatever_context("creating user folder")?;
+        let media =
+            ServerMediaManager::new(&folder).whatever_context("opening media db")?;
+        let mut state = self.state.lock().unwrap();
+        // Remove any existing entry for this username — the hkey changes when
+        // the password changes, so a plain insert would leave a stale entry.
+        state.users.retain(|_, u| u.name != name);
+        state.users.insert(
+            hkey,
+            User {
+                name: name.into(),
+                password_hash: pwhash,
+                col: None,
+                sync_state: None,
+                media,
+                folder,
+            },
+        );
+        Ok(())
+    }
+
     pub async fn make_server(
         config: SyncServerConfig,
     ) -> error::Result<(SocketAddr, ServerFuture), Whatever> {
@@ -280,3 +320,45 @@ impl SimpleServer {
 }
 
 pub type ServerFuture = Pin<Box<dyn Future<Output = error::Result<(), std::io::Error>> + Send>>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn add_user_inserts_user_and_creates_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("SYNC_USER1", "bootstrap:bootstrappass");
+        let server = SimpleServer::new(dir.path()).unwrap();
+        std::env::remove_var("SYNC_USER1");
+
+        server.add_user("alice", "secret", dir.path()).unwrap();
+
+        // Folder was created on disk
+        assert!(dir.path().join("alice").exists());
+
+        // User is in the map with the correct hkey and name
+        let state = server.state.lock().unwrap();
+        let hkey = derive_hkey("alice:secret");
+        let user = state.users.get(&hkey).expect("user not found in map");
+        assert_eq!(user.name, "alice");
+    }
+
+    #[test]
+    fn add_user_replaces_existing_user() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("SYNC_USER1", "bootstrap:bootstrappass");
+        let server = SimpleServer::new(dir.path()).unwrap();
+        std::env::remove_var("SYNC_USER1");
+
+        server.add_user("alice", "first", dir.path()).unwrap();
+        server.add_user("alice", "second", dir.path()).unwrap();
+
+        // Only one alice entry — keyed by new hkey
+        let state = server.state.lock().unwrap();
+        let old_hkey = derive_hkey("alice:first");
+        let new_hkey = derive_hkey("alice:second");
+        assert!(state.users.get(&old_hkey).is_none(), "old hkey should be gone");
+        assert!(state.users.get(&new_hkey).is_some(), "new hkey should exist");
+    }
+}
