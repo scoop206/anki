@@ -7,6 +7,9 @@ mod media_manager;
 mod routes;
 mod user;
 
+pub use routes::collection_sync_router;
+pub use routes::media_sync_router;
+
 use std::collections::HashMap;
 use std::future::Future;
 use std::future::IntoFuture;
