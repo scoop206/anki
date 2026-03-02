@@ -261,6 +261,46 @@ impl SimpleServer {
             .whatever_context("registering imported media entries")
     }
 
+    /// Restore a user from persistent storage using a previously-derived hkey.
+    /// Uses a sentinel password hash so hkey-based sync works immediately after
+    /// restart. A subsequent web login will call `add_user()` to replace the
+    /// sentinel with the real PBKDF2 hash, enabling password re-verification.
+    /// No-op if the user is already present (e.g. already restored or logged in).
+    pub fn add_user_hkey(
+        &self,
+        name: &str,
+        hkey: &str,
+        base_folder: &Path,
+    ) -> error::Result<(), Whatever> {
+        if self.state.lock().unwrap().users.contains_key(hkey) {
+            return Ok(());
+        }
+        let sentinel_hash = Pbkdf2
+            .hash_password(
+                b"__sentinel__",
+                &SaltString::from_b64("tonuvYGpksNFQBlEmm3lxg").unwrap(),
+            )
+            .expect("couldn't hash sentinel")
+            .to_string();
+        let folder = base_folder.join(name);
+        create_dir_all(&folder).whatever_context("creating user folder")?;
+        let mut state = self.state.lock().unwrap();
+        state.users.retain(|_, u| u.name != name);
+        let media = ServerMediaManager::new(&folder).whatever_context("opening media db")?;
+        state.users.insert(
+            hkey.to_string(),
+            User {
+                name: name.into(),
+                password_hash: sentinel_hash,
+                col: None,
+                sync_state: None,
+                media,
+                folder,
+            },
+        );
+        Ok(())
+    }
+
     pub fn add_user(
         &self,
         name: &str,
