@@ -266,6 +266,12 @@ impl SimpleServer {
     /// restart. A subsequent web login will call `add_user()` to replace the
     /// sentinel with the real PBKDF2 hash, enabling password re-verification.
     /// No-op if the user is already present (e.g. already restored or logged in).
+    /// Returns true if the given hkey is currently in the sync server's
+    /// in-memory user table. Intended for use in tests.
+    pub fn has_hkey(&self, hkey: &str) -> bool {
+        self.state.lock().unwrap().users.contains_key(hkey)
+    }
+
     pub fn add_user_hkey(
         &self,
         name: &str,
