@@ -48,7 +48,7 @@ impl ServerMediaDatabase {
         Ok(())
     }
 
-    fn add_entry(
+    pub(crate) fn add_entry(
         &mut self,
         meta: &mut StoreMetadata,
         filename: String,
@@ -70,7 +70,7 @@ impl ServerMediaDatabase {
     }
 
     /// Returns the old sha1
-    fn replace_entry(
+    pub(crate) fn replace_entry(
         &mut self,
         meta: &mut StoreMetadata,
         existing_nonempty: &mut MediaEntry,

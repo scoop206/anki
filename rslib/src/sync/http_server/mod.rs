@@ -239,6 +239,28 @@ impl SimpleServer {
     /// takes the state mutex only long enough to insert. If a user with the
     /// same name already exists, their entry is removed first (handles password
     /// changes where the hkey would otherwise differ).
+    /// Register media files imported server-side into the user's media.db so
+    /// that Beta clients can discover and download them on the next media sync.
+    /// Best-effort: returns an error if the user is not currently in the sync
+    /// server's in-memory state (e.g. server was restarted since last login).
+    pub fn register_imported_media(
+        &self,
+        hkey: &str,
+        entries: &[(String, Vec<u8>, u64)],
+    ) -> error::Result<(), Whatever> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let mut state = self.state.lock().unwrap();
+        let user = state
+            .users
+            .get_mut(hkey)
+            .whatever_context("user not in sync server state")?;
+        user.media
+            .register_imported_entries(entries)
+            .whatever_context("registering imported media entries")
+    }
+
     pub fn add_user(
         &self,
         name: &str,

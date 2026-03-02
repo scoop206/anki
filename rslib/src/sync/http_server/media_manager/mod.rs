@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use anki_io::create_dir_all;
 
+use crate::error;
 use crate::prelude::*;
 use crate::sync::error::HttpResult;
 use crate::sync::error::OrHttpErr;
@@ -30,6 +31,34 @@ impl ServerMediaManager {
             db: ServerMediaDatabase::new(&user_folder.join("media.db"))
                 .or_internal_err("open media db")?,
         })
+    }
+
+    /// Register media files imported server-side (e.g. via web UI .apkg import).
+    /// Each entry is `(nfc_filename, sha1_bytes, file_size)`. Skips files that
+    /// are already tracked with an identical checksum; replaces those with a
+    /// different checksum.
+    pub fn register_imported_entries(
+        &mut self,
+        entries: &[(String, Vec<u8>, u64)],
+    ) -> error::Result<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        self.db.with_transaction(|db, meta| {
+            for (fname, sha1, size) in entries {
+                match db.get_nonempty_entry(fname)? {
+                    Some(e) if e.sha1 == *sha1 => {}
+                    Some(mut e) => {
+                        db.replace_entry(meta, &mut e, *size as usize, sha1.clone())?;
+                    }
+                    None => {
+                        db.add_entry(meta, fname.clone(), *size as usize, sha1.clone())?;
+                    }
+                }
+            }
+            Ok(())
+        })?;
+        Ok(())
     }
 
     pub fn last_usn(&self) -> HttpResult<Usn> {
