@@ -272,22 +272,34 @@ impl SimpleServer {
         self.state.lock().unwrap().users.contains_key(hkey)
     }
 
-    pub fn add_user_hkey(
+    /// Compute the PBKDF2 password hash that SimpleServer uses internally,
+    /// given a plaintext password. Callers should store this at registration
+    /// time and pass it to add_user_hkey_with_hash() for correct restoration
+    /// after a server restart (so that hostKey authentication works).
+    pub fn compute_sync_password_hash(password: &str) -> String {
+        Pbkdf2
+            .hash_password(
+                password.as_bytes(),
+                &SaltString::from_b64("tonuvYGpksNFQBlEmm3lxg").unwrap(),
+            )
+            .expect("couldn't hash password")
+            .to_string()
+    }
+
+    /// Restore a user from persistent storage using a previously-stored PBKDF2
+    /// hash. Unlike add_user_hkey (which uses a sentinel), this allows Anki
+    /// Desktop hostKey authentication to succeed after a server restart.
+    /// No-op if the hkey is already present.
+    pub fn add_user_hkey_with_hash(
         &self,
         name: &str,
         hkey: &str,
+        pbkdf2_hash: &str,
         base_folder: &Path,
     ) -> error::Result<(), Whatever> {
         if self.state.lock().unwrap().users.contains_key(hkey) {
             return Ok(());
         }
-        let sentinel_hash = Pbkdf2
-            .hash_password(
-                b"__sentinel__",
-                &SaltString::from_b64("tonuvYGpksNFQBlEmm3lxg").unwrap(),
-            )
-            .expect("couldn't hash sentinel")
-            .to_string();
         let folder = base_folder.join(name);
         create_dir_all(&folder).whatever_context("creating user folder")?;
         let mut state = self.state.lock().unwrap();
@@ -297,7 +309,7 @@ impl SimpleServer {
             hkey.to_string(),
             User {
                 name: name.into(),
-                password_hash: sentinel_hash,
+                password_hash: pbkdf2_hash.to_string(),
                 col: None,
                 sync_state: None,
                 media,
@@ -305,6 +317,16 @@ impl SimpleServer {
             },
         );
         Ok(())
+    }
+
+    pub fn add_user_hkey(
+        &self,
+        name: &str,
+        hkey: &str,
+        base_folder: &Path,
+    ) -> error::Result<(), Whatever> {
+        let sentinel_hash = SimpleServer::compute_sync_password_hash("__sentinel__");
+        self.add_user_hkey_with_hash(name, hkey, &sentinel_hash, base_folder)
     }
 
     pub fn add_user(
