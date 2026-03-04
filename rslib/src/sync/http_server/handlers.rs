@@ -63,6 +63,10 @@ impl SyncProtocol for Arc<SimpleServer> {
             let req = req.json()?;
             let mut meta = user.with_col(|col| server_meta(req, col))?;
             meta.media_usn = user.media.last_usn()?;
+            // Close the collection after meta so it isn't held open between
+            // syncs. If the client proceeds with a full sync (start/upload/
+            // download), ensure_col_open() will reopen it as needed.
+            let _ = user.col.take();
             Ok(meta)
         })
         .await
@@ -154,6 +158,8 @@ impl SyncProtocol for Arc<SimpleServer> {
             let _ = req.json()?;
             let now = user.with_sync_state(req.skey()?, |col, _state| server_finish(col))?;
             user.sync_state = None;
+            // Close the collection so it isn't held open between syncs.
+            let _ = user.col.take();
             SyncResponse::try_from_obj(now)
         })
         .await
@@ -183,7 +189,10 @@ impl SyncProtocol for Arc<SimpleServer> {
             let _ = req.json()?;
             user.abort_stateful_sync_if_active();
             user.ensure_col_open()?;
-            server_download(&mut user.col, schema_version).map(SyncResponse::from_vec)
+            let result = server_download(&mut user.col, schema_version).map(SyncResponse::from_vec);
+            // Close the collection so it isn't held open between syncs.
+            let _ = user.col.take();
+            result
         })
         .await
     }
