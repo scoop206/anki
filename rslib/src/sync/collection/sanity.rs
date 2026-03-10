@@ -96,6 +96,7 @@ pub fn server_sanity_check(
     let _ = col.storage.clear_deck_usns();
     let _ = col.storage.clear_notetype_usns();
     let _ = col.storage.clear_deck_conf_usns();
+    let _ = col.storage.clear_pending_grave_usns();
     let mut server = match col.storage.sanity_check_info() {
         Ok(info) => info,
         Err(err) => {

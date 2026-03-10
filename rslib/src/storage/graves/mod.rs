@@ -75,6 +75,13 @@ impl SqliteStorage {
         Ok(())
     }
 
+    pub(crate) fn clear_pending_grave_usns(&self) -> Result<()> {
+        self.db
+            .prepare("update graves set usn=0 where usn=-1")?
+            .execute([])?;
+        Ok(())
+    }
+
     fn add_grave(&self, oid: i64, kind: GraveKind, usn: Usn) -> Result<()> {
         self.db
             .prepare_cached(include_str!("add.sql"))?
