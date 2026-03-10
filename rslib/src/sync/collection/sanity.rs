@@ -86,6 +86,16 @@ pub fn server_sanity_check(
     SanityCheckRequest { mut client }: SanityCheckRequest,
     col: &mut Collection,
 ) -> Result<SanityCheckResponse> {
+    // Clear any usn=-1 rows left by incremental sync before checking.
+    // usn=-1 is the normal "pending sync" sentinel and is valid on incoming
+    // changes; the server should stamp them before the sanity check runs.
+    let _ = col.storage.clear_pending_revlog_usns();
+    let _ = col.storage.clear_pending_note_usns();
+    let _ = col.storage.clear_pending_card_usns();
+    let _ = col.storage.clear_tag_usns();
+    let _ = col.storage.clear_deck_usns();
+    let _ = col.storage.clear_notetype_usns();
+    let _ = col.storage.clear_deck_conf_usns();
     let mut server = match col.storage.sanity_check_info() {
         Ok(info) => info,
         Err(err) => {
